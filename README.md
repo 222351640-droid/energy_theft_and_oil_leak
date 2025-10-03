@@ -17,13 +17,12 @@ We developed an **AI solution** to detect **electricity theft** and **oil pipeli
 ---
 
 ## 👥 Team Members
-- Member 1 – Project Lead & Dashboard Developer
-- Member 2 – Energy Data Wrangler
-- Member 3 – Pipeline Data Wrangler
-- Member 4 – Feature Engineer (Energy)
-- Member 5 – Feature Engineer (Pipeline)
-- Member 6 – ML Model Builder (Energy Theft)
-- Member 7 – ML Model Builder (Pipeline Leak)
+- Elton – Project Lead & Dashboard Developer
+- Shannon – Energy Data Wrangler
+- Amelia – Pipeline Data Wrangler
+- Rirhandzu – Feature Engineer (Energy)
+- Nathi – Feature Engineer (Pipeline)
+- Vinny – ML Model Builder (Energy Theft & Pipeline Leak)
 
 ---
 
