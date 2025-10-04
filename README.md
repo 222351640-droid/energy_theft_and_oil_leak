@@ -78,8 +78,8 @@ venv\Scripts\activate      # Windows
 ```
 pip install -r requirements.txt
 ```
-
-📊 Evaluation Metrics
+---
+## 📊 Evaluation Metrics
 
 Precision, Recall, F1-Score (model performance).
 
@@ -87,7 +87,7 @@ Confusion Matrix.
 
 Detection Latency (speed of detection).
 
-📑 Deliverables
+## 📑 Deliverables
 
 Codebase (notebooks, scripts, models).
 
@@ -99,12 +99,12 @@ Final Report (problem, objectives, methods, results, risks).
 
 Grammarly Certificate (proof of writing quality).
 
-🛡️ Academic Integrity
+##🛡️  Academic Integrity
 
 This project is original work by our team.
 We confirm that all sources have been referenced and plagiarism has been avoided.
 
-📅 Timeline
+## 📅 Timeline
 
 Day 1: Energy + Pipeline EDA (Shannon & Amelia)
 
@@ -112,10 +112,8 @@ Day 2: Feature Engineering (Rirhandzu & Nathi)
 
 Day 3: ML Models + Dashboard (Vinny & Elton) → 70% complete for lecturer review
 
-Day 4: Poster Draft (Shannon & Amelia)
+Day 4: Poster Draft (Nathi)
 
-Day 5: Slides Draft (Rirhandzu, Nathi, Vinny, Unity, Elton final polish)
-
-Day 6–10: Report polishing, dashboard improvements, practice run
+Day 5–10: Report polishing, dashboard improvements, practice run
 
 Day 10: Final Presentation
