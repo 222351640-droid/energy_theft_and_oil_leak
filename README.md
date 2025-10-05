@@ -17,7 +17,7 @@ The system uses time-series feature engineering, unsupervised ML (IsolationFores
 - **Amelia** – Pipeline Data Wrangler  
 - **Rirhandzu** – Feature Engineer (Energy)  
 - **Nathi** – Feature Engineer (Pipeline)  
-- **Vinny** – ML Model Builder (Energy Theft & Pipeline Leak)  
+- **Rhulani** – ML Model Builder (Energy Theft & Pipeline Leak)  
 - **Unity** – Documentation & Report Writer  
 
 ---
@@ -188,7 +188,7 @@ Rirhandzu: notebooks/03_feature_engineering_energy.ipynb, data/energy_features.c
 
 Nathi: notebooks/03_feature_engineering_pipeline.ipynb, data/pipeline_features.csv, poster.pdf.
 
-Vinny: notebooks/04_model_energy_theft.ipynb, notebooks/04_model_pipeline_leak.ipynb, data/*.joblib.
+Rhulani: notebooks/04_model_energy_theft.ipynb, notebooks/04_model_pipeline_leak.ipynb, data/*.joblib.
 
 Unity: report.docx, presentation.pdf, final README polishing.
 
