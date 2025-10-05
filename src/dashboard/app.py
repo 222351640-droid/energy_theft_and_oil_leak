@@ -23,7 +23,7 @@ def find_project_root(start_path: Path = Path.cwd()) -> Path:
 
 # Set up paths relative to project root
 PROJECT_ROOT = find_project_root(Path(__file__))
-DATA_DIR = PROJECT_ROOT / 'data'
+DATA_DIR = PROJECT_ROOT / 'src' / 'data'
 energy_data_path = DATA_DIR / 'energy_features.csv'
 pipeline_data_path = DATA_DIR / 'pipeline_features.csv'
 energy_model_path = DATA_DIR / 'energy_model.joblib'
