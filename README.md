@@ -198,7 +198,7 @@ Day 1: Data & EDA (Shannon & Amelia) — DONE
 
 Day 2: Feature engineering (Rirhandzu & Nathi) — IN PROGRESS / DUE
 
-Day 3: Modeling + Dashboard prototype (Vinny & Elton) — DUE (target 70% ready)
+Day 3: Modeling + Dashboard prototype (Rhulani & Elton) — DUE (target 70% ready)
 
 Day 4: Poster draft (Shannon & Amelia)
 
