@@ -49,6 +49,99 @@ def load_models():
     return energy_model, pipeline_model, energy_scaler, pipeline_scaler
 
 @st.cache_data
+def calculate_metrics(energy_predictions, pipeline_predictions, X_energy_scaled, X_pipeline_scaled):
+    # Calculate active alerts
+    energy_alerts = sum(1 for x in energy_predictions if x == -1)
+    pipeline_alerts = sum(1 for x in pipeline_predictions if x == -1)
+    total_alerts = energy_alerts + pipeline_alerts
+    
+    # Calculate detection confidence using decision function
+    energy_scores = np.abs(energy_model.decision_function(X_energy_scaled))
+    pipeline_scores = np.abs(pipeline_model.decision_function(X_pipeline_scaled))
+    
+    # Convert scores to a confidence metric between 0 and 100
+    energy_confidence = (np.mean(energy_scores) / np.max(energy_scores) * 100)
+    pipeline_confidence = (np.mean(pipeline_scores) / np.max(pipeline_scores) * 100)
+    avg_confidence = (energy_confidence + pipeline_confidence) / 2
+    
+    # Calculate other metrics
+    response_time = round(energy_df['rolling_mean_3'].mean() / 60, 1) if 'rolling_mean_3' in energy_df.columns else 4.3
+    monitored_zones = len(energy_df['id'].unique()) if 'id' in energy_df.columns else len(energy_df)
+    
+    result = {}
+    result['active_alerts'] = total_alerts
+    result['energy_alerts'] = energy_alerts
+    result['pipeline_alerts'] = pipeline_alerts
+    result['detection_accuracy'] = round(avg_confidence, 1)
+    result['response_time'] = response_time
+    result['monitored_zones'] = monitored_zones
+    return result
+    return metrics_dict
+
+@st.cache_data
+def get_predictions():
+    # Energy theft predictions
+    energy_features = ['consumption', 'rolling_mean_3', 'rolling_std_3', 'pct_change', 
+                      'lag_1', 'lag_2', 'z_score']
+    X_energy = energy_df[energy_features]
+    X_energy = X_energy.replace([np.inf, -np.inf], np.nan)
+    for col in X_energy.columns:
+        if col in ['rolling_std_3']:
+            X_energy[col] = X_energy[col].fillna(0)
+        else:
+            X_energy[col] = X_energy[col].fillna(method='ffill').fillna(method='bfill')
+    X_energy_scaled = energy_scaler.transform(X_energy)
+    energy_predictions = energy_model.predict(X_energy_scaled)
+    
+    # Pipeline leak predictions
+    pipeline_features = ['flow_mean_5', 'flow_std_5', 'pressure_mean_5', 'pressure_std_5', 
+                        'flow_change', 'pressure_change', 'flow_pressure_corr']
+    X_pipeline = pipeline_df[pipeline_features]
+    X_pipeline = X_pipeline.replace([np.inf, -np.inf], np.nan)
+    X_pipeline = X_pipeline.fillna(method='ffill').fillna(method='bfill').fillna(0)
+    X_pipeline_scaled = pipeline_scaler.transform(X_pipeline)
+    pipeline_predictions = pipeline_model.predict(X_pipeline_scaled)
+    
+    return energy_predictions, pipeline_predictions, X_energy_scaled, X_pipeline_scaled
+
+# Initialize everything at startup
+try:
+    # Load data and models
+    energy_df, pipeline_df = load_data()
+    energy_model, pipeline_model, energy_scaler, pipeline_scaler = load_models()
+    
+    # Get predictions and calculate metrics
+    energy_predictions, pipeline_predictions, X_energy_scaled, X_pipeline_scaled = get_predictions()
+    metrics = calculate_metrics(energy_predictions, pipeline_predictions, X_energy_scaled, X_pipeline_scaled)
+    
+    # Calculate system health metrics
+    energy_efficiency = 100 - (metrics.get('energy_alerts', 0) / len(energy_predictions) * 100)
+    pipeline_integrity = 100 - (metrics.get('pipeline_alerts', 0) / len(pipeline_predictions) * 100)
+    
+    # Calculate total theft cases
+    theft_cases = sum(1 for x in energy_predictions if x == -1)
+except Exception as e:
+    st.error(f"Error initializing the application: {str(e)}")
+    metrics = {}
+    metrics['active_alerts'] = 0
+    metrics['energy_alerts'] = 0
+    metrics['pipeline_alerts'] = 0
+    metrics['detection_accuracy'] = 0
+    metrics['response_time'] = 0
+    metrics['monitored_zones'] = 0
+    energy_efficiency = 0
+    pipeline_integrity = 0
+    theft_cases = 0
+
+@st.cache_resource
+def load_models():
+    energy_model = joblib.load(energy_model_path)
+    pipeline_model = joblib.load(pipeline_model_path)
+    energy_scaler = joblib.load(energy_scaler_path)
+    pipeline_scaler = joblib.load(pipeline_scaler_path)
+    return energy_model, pipeline_model, energy_scaler, pipeline_scaler
+
+@st.cache_data
 def get_predictions():
     # Energy theft predictions
     energy_features = ['consumption', 'rolling_mean_3', 'rolling_std_3', 'pct_change', 
@@ -82,7 +175,6 @@ def calculate_metrics(energy_predictions, pipeline_predictions, X_energy_scaled,
     total_alerts = energy_alerts + pipeline_alerts
     
     # Calculate detection confidence using decision function
-    # Higher absolute values indicate more confident predictions
     energy_scores = np.abs(energy_model.decision_function(X_energy_scaled))
     pipeline_scores = np.abs(pipeline_model.decision_function(X_pipeline_scaled))
     
@@ -95,18 +187,15 @@ def calculate_metrics(energy_predictions, pipeline_predictions, X_energy_scaled,
     response_time = round(energy_df['rolling_mean_3'].mean() / 60, 1) if 'rolling_mean_3' in energy_df.columns else 4.3
     monitored_zones = len(energy_df['id'].unique()) if 'id' in energy_df.columns else len(energy_df)
     
-    # Calculate other metrics
-    response_time = round(energy_df['rolling_mean_3'].mean() / 60, 1) if 'rolling_mean_3' in energy_df.columns else 4.3
-    monitored_zones = len(energy_df['id'].unique()) if 'id' in energy_df.columns else len(energy_df)
-    
-    return {
-        'active_alerts': total_alerts,
-        'detection_accuracy': round(avg_confidence, 1),  # Using confidence instead of accuracy
-        'response_time': response_time,
-        'monitored_zones': monitored_zones,
-        'energy_alerts': energy_alerts,
-        'pipeline_alerts': pipeline_alerts
-    }
+    # Create and return metrics dictionary
+    metrics = {}
+    metrics['active_alerts'] = total_alerts
+    metrics['energy_alerts'] = energy_alerts
+    metrics['pipeline_alerts'] = pipeline_alerts
+    metrics['detection_accuracy'] = round(avg_confidence, 1)
+    metrics['response_time'] = response_time
+    metrics['monitored_zones'] = monitored_zones
+    return metrics
 
 @st.cache_data
 def calculate_risk_areas(energy_predictions):
@@ -188,6 +277,18 @@ st.markdown('''
         font-size: 14px;
         color: #666;
     }
+    .right-sidebar {
+        height: 100%;
+            width: 70%;
+        background-color: #1e1f24;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 20px 0;
+    }
+    .right-sidebar h3 {
+        color: #ffffff;
+        margin-bottom: 15px;
+    }
 </style>
 ''', unsafe_allow_html=True)
 
@@ -219,7 +320,6 @@ st.markdown('''
         font-size: 20px;
         margin-right: 10px;
     }
-    /* Custom styles for the current view indicator */
     .view-indicator {
         background-color: #1e1f24;
         padding: 10px;
@@ -234,7 +334,7 @@ st.markdown('''
 if 'current_view' not in st.session_state:
     st.session_state.current_view = "Dashboard"
 
-# Sidebar
+# Left Sidebar Navigation
 with st.sidebar:
     st.title("Spectra")
     st.markdown("---")
@@ -263,232 +363,321 @@ with st.sidebar:
     </div>
     """.format(st.session_state.current_view), unsafe_allow_html=True)
     
-    # Add some space after the navigation
     st.markdown("---")
-
-# Main header
 
 # Use session state instead of radio button value
 view = st.session_state.current_view
-st.title("AI-Powered Energy Theft & Leak Detection System")
-st.markdown("Real-time insights into electricity theft and pipeline monitoring")
 
-# ---------------------------------------------------
-# 5️⃣ Dashboard Views
-# ---------------------------------------------------
-if view == "Dashboard":
-    # Calculate metrics
-    metrics = calculate_metrics(energy_predictions, pipeline_predictions, X_energy_scaled, X_pipeline_scaled)
-    
-    # Top metrics row
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.markdown(f'''
-        <div class="metric-card">
-            <div class="metric-value">{metrics['active_alerts']}</div>
-            <div class="metric-label">Active Alerts</div>
-            <div style="color: {'red' if metrics['active_alerts'] > 5 else 'green'}; font-size: 12px;">
-                {metrics['energy_alerts']} energy, {metrics['pipeline_alerts']} pipeline
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f'''
-        <div class="metric-card">
-            <div class="metric-value">{metrics['detection_accuracy']}%</div>
-            <div class="metric-label">Detection Accuracy</div>
-            <div style="color: {'green' if metrics['detection_accuracy'] >= 90 else 'orange'}; font-size: 12px;">
-                ML model confidence
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f'''
-        <div class="metric-card">
-            <div class="metric-value">{metrics['response_time']}m</div>
-            <div class="metric-label">Response Time</div>
-            <div style="font-size: 12px;">average detection time</div>
-        </div>
-        ''', unsafe_allow_html=True)
-    
-    with col4:
-        st.markdown(f'''
-        <div class="metric-card">
-            <div class="metric-value">{metrics['monitored_zones']}</div>
-            <div class="metric-label">Monitored Zones</div>
-            <div style="color: green; font-size: 12px;">
-                Active monitoring points
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
-    
-    # Main content area
-    st.markdown("### Monitoring Overview")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown('''
-        <div class="card">
-            <h4>Electricity Consumption Trends</h4>
-        ''', unsafe_allow_html=True)
+# Create columns for main content and right sidebar
+col1, col2 = st.columns([2, 1])
+
+# Main Content
+with col1:
+    st.title("AI-Powered Energy Theft & Leak Detection System")
+    st.markdown("Real-time insights into electricity theft and pipeline monitoring")
+
+    # ---------------------------------------------------
+    # 5️⃣ Dashboard Views
+    # ---------------------------------------------------
+    if view == "Dashboard":
+        # Calculate metrics
+        metrics = calculate_metrics(energy_predictions, pipeline_predictions, X_energy_scaled, X_pipeline_scaled)
         
-        # Plot
-        sample = energy_df.sample(min(3000, len(energy_df)))
-        sample['anomaly'] = [1 if x == -1 else 0 for x in energy_predictions[:len(sample)]]
+        # Top metrics row
+        mc1, mc2, mc3, mc4 = st.columns(4)
         
-        fig, ax = plt.subplots(figsize=(10, 5))
-        sns.scatterplot(data=sample, x='date', y='consumption', 
-                       hue='anomaly', palette='coolwarm', ax=ax)
-        plt.title('Energy Consumption Patterns')
-        plt.xlabel('Date')
-        plt.ylabel('Consumption')
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        st.pyplot(fig)
-        
-    with col2:
-        st.markdown('''
-        <div class="card">
-            <h4>Risk Areas</h4>
-        ''', unsafe_allow_html=True)
-        
-        # Calculate risk areas from real data
-        risk_data = calculate_risk_areas(energy_predictions)
-        
-        for zone, (risk, thefts, leaks) in risk_data.items():
+        with mc1:
             st.markdown(f'''
-            <div style="margin-bottom: 15px;">
-                <div style="display: flex; justify-content: space-between;">
-                    <span>{zone}</span>
-                    <span style="color: {'red' if risk == 'High' else 'orange' if risk == 'Medium' else 'green'};">{risk}</span>
-                </div>
-                <div style="font-size: 12px; color: #666;">
-                    {thefts} theft{'s' if thefts != 1 else ''} • {leaks} leak{'s' if leaks != 1 else ''}
+            <div class="metric-card">
+                <div class="metric-value">{metrics['active_alerts']}</div>
+                <div class="metric-label">Active Alerts</div>
+                <div style="color: {'red' if metrics['active_alerts'] > 5 else 'green'}; font-size: 12px;">
+                    {metrics['energy_alerts']} energy, {metrics['pipeline_alerts']} pipeline
                 </div>
             </div>
             ''', unsafe_allow_html=True)
-    
-    # Bottom statistics
-    st.markdown("### System Performance")
-    col1, col2, col3 = st.columns(3)
-    
-    # Calculate performance metrics
-    theft_cases, pipeline_integrity, energy_efficiency = calculate_performance_metrics(energy_predictions, pipeline_predictions)
-    
-    with col1:
-        st.markdown(f'''
-        <div class="metric-card">
-            <div class="metric-value">{theft_cases}</div>
-            <div class="metric-label">Theft Cases Detected</div>
-            <div style="color: {'red' if theft_cases > 50 else 'green'}; font-size: 12px;">
-                Total cases identified
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f'''
-        <div class="metric-card">
-            <div class="metric-value">{pipeline_integrity}%</div>
-            <div class="metric-label">Pipeline Integrity</div>
-            <div style="color: {'green' if pipeline_integrity > 95 else 'orange'}; font-size: 12px;">
-                System health
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f'''
-        <div class="metric-card">
-            <div class="metric-value">{energy_efficiency}%</div>
-            <div class="metric-label">Energy Efficiency</div>
-            <div style="color: {'green' if energy_efficiency > 90 else 'orange'}; font-size: 12px;">
-                Operational efficiency
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
-
-elif view == "Theft Detection":
-    st.subheader("🔌 Energy Theft Detection")
-    
-    # Display anomaly details
-    st.markdown("### Anomaly Detection Results")
-    anomaly_df = pd.DataFrame({
-        'Date': energy_df['date'] if 'date' in energy_df.columns else range(len(energy_df)),
-        'Consumption': energy_df['consumption'],
-        'Anomaly': ['Yes' if x == -1 else 'No' for x in energy_predictions]
-    })
-    st.dataframe(anomaly_df[anomaly_df['Anomaly'] == 'Yes'].head(10))
-    
-    # Show feature importance if available
-    if hasattr(energy_model, 'feature_importances_'):
-        st.markdown("### Feature Importance")
-        feature_importance = pd.DataFrame({
-            'Feature': ['consumption', 'rolling_mean_3', 'rolling_std_3', 'pct_change', 
-                       'lag_1', 'lag_2', 'z_score'],
-            'Importance': energy_model.feature_importances_
-        }).sort_values('Importance', ascending=False)
         
-        fig, ax = plt.subplots(figsize=(10, 4))
-        sns.barplot(data=feature_importance, x='Importance', y='Feature')
-        plt.title('Feature Importance in Theft Detection')
+        with mc2:
+            st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-value">{metrics['detection_accuracy']}%</div>
+                <div class="metric-label">Detection Accuracy</div>
+                <div style="color: {'green' if metrics['detection_accuracy'] >= 90 else 'orange'}; font-size: 12px;">
+                    ML model confidence
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        with mc3:
+            st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-value">{metrics['response_time']}m</div>
+                <div class="metric-label">Response Time</div>
+                <div style="font-size: 12px;">average detection time</div>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        with mc4:
+            st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-value">{metrics['monitored_zones']}</div>
+                <div class="metric-label">Monitored Zones</div>
+                <div style="color: green; font-size: 12px;">
+                    Active monitoring points
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        # Main content area
+        st.markdown("### Monitoring Overview")
+        mc1, mc2 = st.columns(2)
+        
+        with mc1:
+            st.markdown('''
+            <div class="card">
+                <h4>Electricity Consumption Trends</h4>
+            ''', unsafe_allow_html=True)
+            
+            # Plot
+            sample = energy_df.sample(min(3000, len(energy_df)))
+            sample['anomaly'] = [1 if x == -1 else 0 for x in energy_predictions[:len(sample)]]
+            
+            fig, ax = plt.subplots(figsize=(10, 5))
+            sns.scatterplot(data=sample, x='date', y='consumption', 
+                           hue='anomaly', palette='coolwarm', ax=ax)
+            plt.title('Energy Consumption Patterns')
+            plt.xlabel('Date')
+            plt.ylabel('Consumption')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            st.pyplot(fig)
+            
+        with mc2:
+            st.markdown('''
+            <div class="card">
+                <h4>Risk Areas</h4>
+            ''', unsafe_allow_html=True)
+            
+            # Calculate risk areas from real data
+            risk_data = calculate_risk_areas(energy_predictions)
+            
+            for zone, (risk, thefts, leaks) in risk_data.items():
+                st.markdown(f'''
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>{zone}</span>
+                        <span style="color: {'red' if risk == 'High' else 'orange' if risk == 'Medium' else 'green'};">{risk}</span>
+                    </div>
+                    <div style="font-size: 12px; color: #666;">
+                        {thefts} theft{'s' if thefts != 1 else ''} • {leaks} leak{'s' if leaks != 1 else ''}
+                    </div>
+                </div>
+                ''', unsafe_allow_html=True)
+        
+        # Bottom statistics
+        st.markdown("### System Performance")
+        perf_col1, perf_col2, perf_col3 = st.columns(3)
+        
+        # Calculate performance metrics
+        theft_cases, pipeline_integrity, energy_efficiency = calculate_performance_metrics(energy_predictions, pipeline_predictions)
+        
+        with perf_col1:
+            st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-value">{theft_cases}</div>
+                <div class="metric-label">Theft Cases Detected</div>
+                <div style="color: {'red' if theft_cases > 50 else 'green'}; font-size: 12px;">
+                    Total cases identified
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        with perf_col2:
+            st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-value">{pipeline_integrity}%</div>
+                <div class="metric-label">Pipeline Integrity</div>
+                <div style="color: {'green' if pipeline_integrity > 95 else 'orange'}; font-size: 12px;">
+                    System health
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        with perf_col3:
+            st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-value">{energy_efficiency}%</div>
+                <div class="metric-label">Energy Efficiency</div>
+                <div style="color: {'green' if energy_efficiency > 90 else 'orange'}; font-size: 12px;">
+                    Operational efficiency
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+
+    elif view == "Theft Detection":
+        st.subheader("🔌 Energy Theft Detection")
+        
+        # Display anomaly details
+        st.markdown("### Anomaly Detection Results")
+        anomaly_df = pd.DataFrame({
+            'Date': energy_df['date'] if 'date' in energy_df.columns else range(len(energy_df)),
+            'Consumption': energy_df['consumption'],
+            'Anomaly': ['Yes' if x == -1 else 'No' for x in energy_predictions]
+        })
+        st.dataframe(anomaly_df[anomaly_df['Anomaly'] == 'Yes'].head(10))
+        
+        # Show feature importance if available
+        if hasattr(energy_model, 'feature_importances_'):
+            st.markdown("### Feature Importance")
+            feature_importance = pd.DataFrame({
+                'Feature': ['consumption', 'rolling_mean_3', 'rolling_std_3', 'pct_change', 
+                           'lag_1', 'lag_2', 'z_score'],
+                'Importance': energy_model.feature_importances_
+            }).sort_values('Importance', ascending=False)
+            
+            fig, ax = plt.subplots(figsize=(10, 4))
+            sns.barplot(data=feature_importance, x='Importance', y='Feature')
+            plt.title('Feature Importance in Theft Detection')
+            st.pyplot(fig)
+
+    elif view == "Leak Monitoring":
+        st.subheader("🛢️ Pipeline Leak Monitoring")
+        
+        # Display leak detection results
+        st.markdown("### Recent Leak Alerts")
+        leak_df = pd.DataFrame({
+            'Time': range(len(pipeline_df)),
+            'Pressure': pipeline_df['pressure_mean_5'],
+            'Flow': pipeline_df['flow_mean_5'],
+            'Leak Detected': ['Yes' if x == -1 else 'No' for x in pipeline_predictions]
+        })
+        st.dataframe(leak_df[leak_df['Leak Detected'] == 'Yes'].head(10))
+        
+        # Pressure vs Flow visualization
+        st.markdown("### Pressure vs Flow Analysis")
+        fig, ax = plt.subplots(figsize=(10, 5))
+        colors = ['red' if x == -1 else 'blue' for x in pipeline_predictions]
+        plt.scatter(pipeline_df['flow_mean_5'], pipeline_df['pressure_mean_5'], c=colors, alpha=0.5)
+        plt.xlabel('Flow Rate')
+        plt.ylabel('Pressure')
+        plt.title('Pipeline Behavior Analysis')
         st.pyplot(fig)
 
-elif view == "Leak Monitoring":
-    st.subheader("🛢️ Pipeline Leak Monitoring")
-    
-    # Display leak detection results
-    st.markdown("### Recent Leak Alerts")
-    leak_df = pd.DataFrame({
-        'Time': range(len(pipeline_df)),
-        'Pressure': pipeline_df['pressure_mean_5'],
-        'Flow': pipeline_df['flow_mean_5'],
-        'Leak Detected': ['Yes' if x == -1 else 'No' for x in pipeline_predictions]
-    })
-    st.dataframe(leak_df[leak_df['Leak Detected'] == 'Yes'].head(10))
-    
-    # Pressure vs Flow visualization
-    st.markdown("### Pressure vs Flow Analysis")
-    fig, ax = plt.subplots(figsize=(10, 5))
-    colors = ['red' if x == -1 else 'blue' for x in pipeline_predictions]
-    plt.scatter(pipeline_df['flow_mean_5'], pipeline_df['pressure_mean_5'], c=colors, alpha=0.5)
-    plt.xlabel('Flow Rate')
-    plt.ylabel('Pressure')
-    plt.title('Pipeline Behavior Analysis')
-    st.pyplot(fig)
+    elif view == "Reports":
+        st.subheader("📊 Reports")
+        st.markdown("### Summary Statistics")
+        
+        report_col1, report_col2 = st.columns(2)
+        
+        with report_col1:
+            st.markdown("#### Energy Theft Statistics")
+            st.write(f"- Total Cases Detected: {theft_cases}")
+            st.write(f"- Detection Accuracy: {metrics['detection_accuracy']}%")
+            st.write(f"- Average Response Time: {metrics['response_time']}m")
+            st.write(f"- Energy Efficiency: {energy_efficiency}%")
+        
+        with report_col2:
+            st.markdown("#### Pipeline Health")
+            st.write(f"- System Integrity: {pipeline_integrity}%")
+            st.write(f"- Active Alerts: {metrics['pipeline_alerts']}")
+            st.write(f"- Monitored Zones: {metrics['monitored_zones']}")
 
-elif view == "Reports":
-    st.subheader("📊 Reports")
-    st.markdown("### Summary Statistics")
-    
-    metrics = calculate_metrics(energy_predictions, pipeline_predictions, X_energy_scaled, X_pipeline_scaled)
-    theft_cases, pipeline_integrity, energy_efficiency = calculate_performance_metrics(
-        energy_predictions, pipeline_predictions)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### Energy Theft Statistics")
-        st.write(f"- Total Cases Detected: {theft_cases}")
-        st.write(f"- Detection Accuracy: {metrics['detection_accuracy']}%")
-        st.write(f"- Average Response Time: {metrics['response_time']}m")
-        st.write(f"- Energy Efficiency: {energy_efficiency}%")
-    
-    with col2:
-        st.markdown("#### Pipeline Health")
-        st.write(f"- System Integrity: {pipeline_integrity}%")
-        st.write(f"- Active Alerts: {metrics['pipeline_alerts']}")
-        st.write(f"- Monitored Zones: {metrics['monitored_zones']}")
+    elif view == "Community Chat":
+        st.subheader("💬 Community Chat")
+        st.info("This feature is coming soon! It will allow community members to discuss and share insights about energy theft and pipeline leak detection.")
 
-elif view == "Community Chat":
-    st.subheader("💬 Community Chat")
-    st.info("This feature is coming soon! It will allow community members to discuss and share insights about energy theft and pipeline leak detection.")
+# Right Sidebar
+with col2:
+    st.markdown('<div class="right-sidebar">', unsafe_allow_html=True)
+    st.markdown("### 🤖 AI-Detected Solutions")
+    
+    if metrics['active_alerts'] > 0:
+        st.error(f"🚨 {metrics['active_alerts']} Active Issues Detected")
+        
+        # Energy Theft Solutions
+        if metrics['energy_alerts'] > 0:
+            with st.expander("⚡ Energy Theft Solutions"):
+                st.markdown("""
+                **Recommended Actions:**
+                1. Deploy field inspection team
+                2. Install tamper-proof meters
+                3. Implement smart meter monitoring
+                4. Schedule routine audits
+                
+                **Prevention Measures:**
+                - Regular meter inspection
+                - Consumer education programs
+                - Advanced metering infrastructure
+                """)
+        
+        # Pipeline Leak Solutions
+        if metrics['pipeline_alerts'] > 0:
+            with st.expander("🔧 Pipeline Leak Solutions"):
+                st.markdown("""
+                **Immediate Actions:**
+                1. Isolate affected section
+                2. Deploy maintenance team
+                3. Pressure reduction
+                4. Emergency repair planning
+                
+                **Prevention Strategies:**
+                - Regular maintenance schedule
+                - Pressure monitoring
+                - Corrosion prevention
+                - Pipeline integrity testing
+                """)
+    else:
+        st.success("✅ All Systems Normal")
+    
+    # System Health
+    st.markdown("### 📊 System Health")
+    # Ensure both metrics are positive before calculating health score
+    safe_pipeline_integrity = max(0, min(100, pipeline_integrity))
+    safe_energy_efficiency = max(0, min(100, energy_efficiency))
+    health_score = (safe_pipeline_integrity + safe_energy_efficiency) / 2
+    
+    health_color = (
+        "🔴 Critical" if health_score < 70 else
+        "🟡 Moderate" if health_score < 90 else
+        "🟢 Optimal"
+    )
+    
+    st.metric("Overall Health", f"{health_color}")
+    # Ensure progress value is between 0 and 1
+    st.progress(max(0, min(1, health_score/100)))
+    
+    # Quick Stats
+    st.markdown("### 📈 Quick Stats")
+    st.markdown(f"""
+    - Detection Accuracy: {metrics['detection_accuracy']}%
+    - Response Time: {metrics['response_time']}m
+    - Monitored Zones: {metrics['monitored_zones']}
+    """)
+    
+    # Tips and Best Practices
+    st.markdown("### 💡 Tips & Best Practices")
+    with st.expander("View Tips"):
+        st.markdown("""
+        1. **Regular Monitoring**
+           - Check system alerts daily
+           - Review performance metrics weekly
+           
+        2. **Maintenance Schedule**
+           - Monthly meter inspections
+           - Quarterly pipeline integrity tests
+           
+        3. **Emergency Response**
+           - Keep emergency contacts updated
+           - Follow incident response protocols
+           
+        4. **Data Analysis**
+           - Review historical patterns
+           - Track seasonal variations
+        """)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------
-# 6️⃣ Footer
+# 7️⃣ Footer
 # ---------------------------------------------------
 st.markdown("---")
 st.markdown("Developed by **Constallation Group** — Elton, Shannon, Amelia, Rirhandzu, Nathi, Vinny & Unity")
